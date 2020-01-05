@@ -27,18 +27,21 @@ parser.add_argument('--log-interval', type=int, default=100,
                     help='reporting interval')
 args = parser.parse_args()
 
+
 def model_save(fn):
     with open(fn, 'wb') as f:
-        #torch.save([model, criterion, optimizer], f)
+        # torch.save([model, criterion, optimizer], f)
         torch.save([model, criterion], f)
+
 
 def model_load(fn):
     global model, criterion, optimizer
     with open(fn, 'rb') as f:
-        #model, criterion, optimizer = torch.load(f)
+        # model, criterion, optimizer = torch.load(f)
         model, criterion = torch.load(f)
-        #model.load_state_dict(m.state_dict(), strict=False)
-        #del m
+        # model.load_state_dict(m.state_dict(), strict=False)
+        # del m
+
 
 model, criterion = torch.load(args.checkpoint)
 
@@ -52,6 +55,7 @@ else:
 
 import os
 import hashlib
+
 fn = 'corpus.{}.data'.format(hashlib.md5(args.data.encode()).hexdigest())
 if os.path.exists(fn):
     print('Loading cached dataset...')
@@ -69,15 +73,15 @@ mems = None
 
 text = sys.stdin.read()
 
-#import youtokentome as yttm
-#m = 'data/wpwikitext-103/wt103.yttm'
-#bpe = yttm.BPE(model=m)
-#text = ' '.join(bpe.encode(text, output_type=yttm.OutputType.SUBWORD))
+# import youtokentome as yttm
+# m = 'data/wpwikitext-103/wt103.yttm'
+# bpe = yttm.BPE(model=m)
+# text = ' '.join(bpe.encode(text, output_type=yttm.OutputType.SUBWORD))
 
-#if type(text) == str:
+# if type(text) == str:
 #    text = text.encode('utf8')
 
-#text = [str(c) if c != ord('\n') else '<eos>' for c in text]
+# text = [str(c) if c != ord('\n') else '<eos>' for c in text]
 
 text = [w for w in text.replace('\n', ' <eos> ').split() if w]
 
@@ -100,13 +104,16 @@ if args.cuda:
     input = input.cuda()
 logits, hidden, mems = model(input[:-1, :], hidden, mems=mems, return_h=False)
 input = input[-1:, :]
+
+
 # TODO: We lose a token here as we predict one, update the memory, but don't add it to our generated text
 
 def produce_vocab_logits(head_weight, head_bias, hiddens):
     head_res = torch.nn.functional.linear(hiddens, head_weight, bias=head_bias)
-    #softmaxed_head_res = torch.nn.functional.log_softmax(head_res, dim=-1)
-    #softmaxed_head_res = F.softmax(head_res, dim=-1)
+    # softmaxed_head_res = torch.nn.functional.log_softmax(head_res, dim=-1)
+    # softmaxed_head_res = F.softmax(head_res, dim=-1)
     return head_res
+
 
 def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
     """ Filter a distribution of logits using top-k and/or nucleus (top-p) filtering
@@ -138,8 +145,9 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
         logits[indices_to_remove] = filter_value
     return logits
 
+
 with open(args.outf, 'w') as outf:
-    #outf.write(str(orig.decode('utf8')))
+    # outf.write(str(orig.decode('utf8')))
     outf.write(orig)
     outf.write('||||')
 
@@ -147,21 +155,21 @@ with open(args.outf, 'w') as outf:
         with torch.no_grad():
             logits, hidden, mems = model(input, hidden, mems=mems, return_h=False)
         # TODO: What if we want to start with no history?
-        #magic_mem = []
-        #for ma, mb in zip(mems, new_mems):
+        # magic_mem = []
+        # for ma, mb in zip(mems, new_mems):
         #    magic_mem.append(torch.cat([ma, mb], dim=0)[-maxlen:])
-        #mems = magic_mem
+        # mems = magic_mem
         output = produce_vocab_logits(model.decoder.weight, model.decoder.bias, logits) / args.temperature
-        #output = top_k_top_p_filtering(output.view(-1), top_k=100).view(*output.shape)
+        # output = top_k_top_p_filtering(output.view(-1), top_k=100).view(*output.shape)
         output = top_k_top_p_filtering(output.view(-1), top_p=0.98).view(*output.shape)
         word_weights = F.softmax(output, dim=-1).squeeze()
-        #word_weights = output.squeeze().data.div(args.temperature).exp().cpu()
+        # word_weights = output.squeeze().data.div(args.temperature).exp().cpu()
         word_idx = torch.multinomial(word_weights, num_samples=1)[0]
         input.data.fill_(word_idx)
         word = dictionary.idx2word[word_idx]
 
-        #outf.write(word + ('\n' if i % 20 == 19 else ' '))
-        #outf.write(chr(int(word)) if word != '<eos>' else '\n')
+        # outf.write(word + ('\n' if i % 20 == 19 else ' '))
+        # outf.write(chr(int(word)) if word != '<eos>' else '\n')
         outf.write(word + ' ' if word != '<eos>' else '\n')
 
         if i % args.log_interval == 0:

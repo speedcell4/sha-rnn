@@ -1,13 +1,13 @@
 from collections import defaultdict
 
+import numpy as np
 import torch
 import torch.nn as nn
-
-import numpy as np
 
 
 class SplitCrossEntropyLoss(nn.Module):
     r'''SplitCrossEntropyLoss calculates an approximate softmax'''
+
     def __init__(self, hidden_size, splits, verbose=False):
         # We assume splits is [0, split1, split2, N] where N >= |V|
         # For example, a vocab of 1000 words may have splits [0] + [100, 500] + [inf]
@@ -76,8 +76,8 @@ class SplitCrossEntropyLoss(nn.Module):
 
         # Determine to which split each element belongs (for each start split value, add 1 if equal or greater)
         # This method appears slower at least for WT-103 values for approx softmax
-        #masks = [(targets >= self.splits[idx]).view(1, -1) for idx in range(1, self.nsplits)]
-        #mask = torch.sum(torch.cat(masks, dim=0), dim=0)
+        # masks = [(targets >= self.splits[idx]).view(1, -1) for idx in range(1, self.nsplits)]
+        # mask = torch.sum(torch.cat(masks, dim=0), dim=0)
         ###
         # This is equally fast for smaller splits as method below but scales linearly
         mask = None
@@ -85,8 +85,8 @@ class SplitCrossEntropyLoss(nn.Module):
             partial_mask = targets >= self.splits[idx]
             mask = mask + partial_mask if mask is not None else partial_mask
         ###
-        #masks = torch.stack([targets] * (self.nsplits - 1))
-        #mask = torch.sum(masks >= self.split_starts, dim=0)
+        # masks = torch.stack([targets] * (self.nsplits - 1))
+        # mask = torch.sum(masks >= self.split_starts, dim=0)
         for idx in range(self.nsplits):
             # If there are no splits, avoid costly masked select
             if self.nsplits == 1:
@@ -100,7 +100,8 @@ class SplitCrossEntropyLoss(nn.Module):
             # Are you in our split?
             tmp_mask = mask == idx
             split_targets.append(torch.masked_select(targets, tmp_mask))
-            split_hiddens.append(hiddens.masked_select(tmp_mask.unsqueeze(1).expand_as(hiddens)).view(-1, hiddens.size(1)))
+            split_hiddens.append(
+                hiddens.masked_select(tmp_mask.unsqueeze(1).expand_as(hiddens)).view(-1, hiddens.size(1)))
         return split_targets, split_hiddens
 
     def forward(self, weight, bias, hiddens, targets, verbose=False):
@@ -130,7 +131,7 @@ class SplitCrossEntropyLoss(nn.Module):
         ###
         # Fix for AMP with 02 optimization
         if head_weight.dtype == torch.float16: combo = combo.half()
-        #head_weight, head_bias = head_weight.to(torch.float), head_bias.to(torch.float)
+        # head_weight, head_bias = head_weight.to(torch.float), head_bias.to(torch.float)
         ###
         all_head_res = torch.nn.functional.linear(combo, head_weight, bias=head_bias)
         softmaxed_all_head_res = torch.nn.functional.log_softmax(all_head_res, dim=-1)
@@ -156,7 +157,8 @@ class SplitCrossEntropyLoss(nn.Module):
                     self.stats[idx].append(split_hiddens[idx].size()[0] * tail_weight.size()[0])
 
                 # Calculate the softmax for the words in the tombstone
-                tail_res = self.logprob(weight, bias, split_hiddens[idx], splits=[idx], softmaxed_head_res=softmaxed_head_res)
+                tail_res = self.logprob(weight, bias, split_hiddens[idx], splits=[idx],
+                                        softmaxed_head_res=softmaxed_head_res)
 
                 # Then we calculate p(tombstone) * p(word in tombstone)
                 # Adding is equivalent to multiplication in log space
@@ -164,7 +166,8 @@ class SplitCrossEntropyLoss(nn.Module):
                 # All indices are shifted - if the first split handles [0,...,499] then the 500th in the second split will be 0 indexed
                 indices = (split_targets[idx] - self.splits[idx]).view(-1, 1)
                 # Warning: if you don't squeeze, you get an N x 1 return, which acts oddly with broadcasting
-                tail_entropy = torch.gather(torch.nn.functional.log_softmax(tail_res, dim=-1), dim=1, index=indices).squeeze()
+                tail_entropy = torch.gather(torch.nn.functional.log_softmax(tail_res, dim=-1), dim=1,
+                                            index=indices).squeeze()
                 entropy = -(head_entropy + tail_entropy)
             ###
             running_offset += len(split_hiddens[idx])
